@@ -134,12 +134,26 @@ class EmonHubInterfacer(threading.Thread):
 
         """
 
+        if cargo.nodename:
+            node_name = cargo.nodename
+        else:
+            node_name = cargo.nodeid
+
+        datalist = []
+        if len(cargo.names) == len(cargo.realdata):
+            for name, data in zip(cargo.names, cargo.realdata):
+                datalist.append({name: data})
+        else:
+            datalist = cargo.realdata
+            if len(cargo.names) > 0:
+                self._log.warning("cargo.names and cargo.realdata have different lengths - " + str(len(cargo.names)) + " vs " + str(len(cargo.realdata)))
+
         # Create a frame of data in "emonCMS format"
         f = []
         try:
             f.append(cargo.timestamp)
-            f.append(cargo.nodeid)
-            for i in cargo.realdata:
+            f.append(node_name)
+            for i in datalist:
                 f.append(i)
             if cargo.rssi:
                 f.append(cargo.rssi)
