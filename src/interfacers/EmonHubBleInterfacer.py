@@ -55,7 +55,11 @@ class EmonHubBleInterfacer(EmonHubInterfacer):
         self._last_read_time = 0
         self._bat_readings = []
 
-	self._connect()
+        try:
+	    self._connect()
+        except Exception as e:
+            self._ble = False
+            self._log.warning('Connection failed: {}'.format(e))
 
     def close(self):
         """Close serial port"""
@@ -76,6 +80,8 @@ class EmonHubBleInterfacer(EmonHubInterfacer):
         interval = int(self._private_settings['read_interval'])
         if time.time() - self._last_read_time < interval:
             return
+
+        self._log.debug("BLE read")
 
         self._last_read_time = time.time()
 
