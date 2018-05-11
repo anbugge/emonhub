@@ -18,7 +18,6 @@ Example config snippets:
 [[blesensor]]
     Type = EmonHubBleInterfacer
     [[[init_settings]]]
-        device_addr = '00:0b:57:64:8c:a2'
     [[[runtimesettings]]]
         pubchannels = ToEmonCMS,
 	read_interval = 20
@@ -27,17 +26,17 @@ Example config snippets:
 
 [[1]]
     nodename = Sensornode
+    device_addr = '00:0b:57:64:8c:a2'
 
     [[[rx]]]
-        names = temp,humidity,battery
-        scales = 0.01,0.01,1
-        units = C,%,%
+        scales = 0.01,0.01,1,0.001
+        units = C,%,%,mbar
 
 """
 
 class EmonHubBleInterfacer(EmonHubInterfacer):
 
-    def __init__(self, name, device_addr=''):
+    def __init__(self, name, device_addr='', node_id=1):
         """Initialize interfacer
 
         device_addr (string): BLE MAC address to connect to
@@ -52,6 +51,7 @@ class EmonHubBleInterfacer(EmonHubInterfacer):
         }
 
         self._addr = device_addr
+        self._node_id = node_id
         self._last_read_time = 0
         self._bat_readings = []
 
@@ -95,17 +95,17 @@ class EmonHubBleInterfacer(EmonHubInterfacer):
         temp = self._get_temperature()
         rh = self._get_humidity()
         bat = self._get_bat_level()
+        pressure = self._get_pressure()
 
-        data = '{}, {}, {}'.format(temp, rh, bat )
+        data = '{}, {}, {}, {}'.format(temp, rh, bat, pressure)
 
         # Create a Payload object
         c = Cargo.new_cargo(rawdata=data)
-        c.realdata = (temp, rh, bat)
+        c.realdata = (temp, rh, bat, pressure)
+        c.names = ('temp', 'humidity', 'battery', 'pressure')
 
-        if int(self._settings['nodeoffset']):
-            c.nodeid = int(self._settings['nodeoffset'])
-        else:
-            c.nodeid = 1
+
+        c.nodeid = self._node_id
 
         return c
 
@@ -133,26 +133,29 @@ class EmonHubBleInterfacer(EmonHubInterfacer):
         # include kwargs from parent
         super(EmonHubBleInterfacer, self).set(**kwargs)
 
-    def _get_temperature(self):
-        val = self._temperature.read()
-        (val,) = struct.unpack('h', val)
+    def _get_val(self, char, format='h'):
+        val = char.read()
+        (val,) = struct.unpack(format, val)
         return val
+        
+    def _get_temperature(self):        
+        return self._get_val(self._temperature)
 
     def _get_humidity(self):
-        val = self._humidity.read()
-        (val,) = struct.unpack('h', val)
-        return val
+        return self._get_val(self._humidity)
+
+    def _get_pressure(self):
+        return self._get_val(self._pressure, 'I')
 
     def _get_bat_level(self):
-        val = self._bat_level.read()
-        (val,) = struct.unpack('B', val)
+        val =  self._get_val(self._bat_level, 'B')
 
         # The battery reading is very noisy - do a simple average
         self._bat_readings.insert(0, val)
         self._bat_readings = self._bat_readings[0:20]
 
         val = sum(self._bat_readings)/float(len(self._bat_readings))
-        #self._log.debug('Batt: {} -> {}'.format(self._bat_readings, val))
+        self._log.debug('Batt: {} -> {}'.format(self._bat_readings, val))
         
         return round(val)
 
@@ -169,6 +172,7 @@ class EmonHubBleInterfacer(EmonHubInterfacer):
         self._temperature = self._ble.getCharacteristics(uuid=btle.AssignedNumbers.temperature)[0]
         self._humidity = self._ble.getCharacteristics(uuid=btle.AssignedNumbers.humidity)[0]
         self._bat_level = self._ble.getCharacteristics(uuid=btle.AssignedNumbers.battery_level)[0]
+        self._pressure = self._ble.getCharacteristics(uuid=btle.AssignedNumbers.pressure)[0]
 
         return True
 
